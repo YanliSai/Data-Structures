@@ -5,12 +5,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public class BlockingQueueTest {
-    private static LinkedBlockingQueue<Integer> buffer = new LinkedBlockingQueue<>(2);
-    //private static BlockingQueue<Integer> buffer = new BlockingQueue<>(2);
-    //private static BlockingQueue2<Integer> buffer = new BlockingQueue2<>(2);
+    private static final int NUM = 2;
+    
+    //private static LinkedBlockingQueue<Integer> buffer = new LinkedBlockingQueue<>(NUM);
+    private static BlockingQueue<Integer> buffer = new BlockingQueue<>(NUM);
+    //private static BlockingQueue2<Integer> buffer = new BlockingQueue2<>(NUM);
 
     public static void main(String[] args) {
-        ExecutorService executor = Executors.newFixedThreadPool(2); // Create 2 threads
+        ExecutorService executor = Executors.newFixedThreadPool(NUM); // Create 2 threads
         executor.execute(new ProducerTask());
         executor.execute(new ConsumerTask());
         executor.shutdown();
@@ -23,8 +25,11 @@ public class BlockingQueueTest {
                 int i = 1;
                 while (true) {                    
                     buffer.put(i++);
-                    System.out.println("Producer puts " + i);
-                    Thread.sleep((int)(Math.random() * 1000));
+                    System.out.println("Producer puts " + (i - 1));
+//                    if (buffer.size() > NUM) {
+//                        System.err.println("buffer size is greater than capacity");
+//                    }
+                    Thread.sleep((int)(Math.random() * 100));
                 }
             } catch (InterruptedException ex) {
                 
@@ -38,7 +43,7 @@ public class BlockingQueueTest {
             try {
                 while (true) {
                     System.out.println("\t\t\tConsumer takes " + buffer.take());
-                    Thread.sleep((int)(Math.random() * 1000));
+                    Thread.sleep((int)(Math.random() * 100));
                 }
             } catch (InterruptedException ex) {
                 

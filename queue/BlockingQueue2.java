@@ -26,8 +26,10 @@ public class BlockingQueue2<E> {
             while (queue.size() == capacity) {
                 wait();
             }
-            queue.offer(e);
-            notifyAll();
+            queue.offer(e); 
+            if (queue.size() == 1) { // Notify only if the queue previously was empty
+                notifyAll();
+            }                      
         } catch (InterruptedException ex) {
             
         }
@@ -40,7 +42,9 @@ public class BlockingQueue2<E> {
                 wait();
             }
             e = queue.poll();
-            notifyAll();
+            if (queue.size() == capacity - 1) { // Notify only if the queue was full
+                notifyAll();
+            }
         } catch (InterruptedException ex) {
             
         }
