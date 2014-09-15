@@ -1,13 +1,13 @@
 package queue;
 
-import java.util.LinkedList;
-import java.util.Queue;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * A bug: take() might return null, not sure why.
+ * JDK version
  * Thread-safe Blocking Queue implementation using two lock queue
  * 
  * @author Jenny
@@ -15,7 +15,16 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 
 public class BlockingQueue<E> {
-    private Queue<E> queue = new LinkedList<E>();
+    static class Node<E> {
+        E item;
+        Node<E> next;
+        Node(E e) {
+            item = e;
+        }
+    }
+    
+    private Node<E> head; // head of the linked list - points to a dummy node
+    private Node<E> tail; // tail of the linked list
     
     private final ReentrantLock putLock = new ReentrantLock();  // Gates entry to put
     private final Condition notFull = putLock.newCondition();   // waiting puts
@@ -36,6 +45,7 @@ public class BlockingQueue<E> {
             throw new IllegalArgumentException();
         }
         this.capacity = capacity;
+        head = tail = new Node<E>(null); // dummy node
     }
     
     /**
@@ -52,46 +62,43 @@ public class BlockingQueue<E> {
         if (e == null) {
             throw new NullPointerException();
         }
-        int count = -1; // Previous count
-        putLock.lockInterruptibly();
+        int count = 0; // Current count
+        Node<E> node = new Node<E>(e);
+        putLock.lock();
         try {
             while (this.count.get() == capacity) {
                 notFull.await();
             }
-            queue.offer(e);
-            count = this.count.getAndIncrement(); // i++
-            if (count + 1 < capacity) {
+            tail = tail.next = node; // enqueue
+            count = this.count.incrementAndGet(); // ++i
+            if (count < capacity) {
                 notFull.signal();
             }
-        } catch (InterruptedException ex) {
-            
         } finally {
             putLock.unlock();
         } 
-        if (count == 0) { // previous count value was empty; now is not empty
+        if (count == 1) { // previous count value was empty; now is not empty
             signalNotEmpty();
         }
     }
     
     public E take() throws InterruptedException {
         E e = null;
-        int count = -1; // Previous count
-        takeLock.lockInterruptibly();
+        int count = 0; // Current count
+        takeLock.lock();
         try {
             while (this.count.get() == 0) {
                 notEmpty.await();
             }
-            e = queue.remove();
-            count = this.count.getAndDecrement(); // i--
-            if (count > 1) {
+            e = dequeue();
+            count = this.count.decrementAndGet(); // --i
+            if (count > 0) {
                 notEmpty.signal();
             }
-        } catch (InterruptedException ex) {
-            ex.printStackTrace();
         } finally {
             takeLock.unlock();
         }
-        if (count == capacity) { // Previously was full but now not
+        if (count == capacity - 1) { // Previously was full but now not
             signalNotFull();
         }
         return e;
@@ -100,6 +107,19 @@ public class BlockingQueue<E> {
     // Number of elements in the queue
     public int size() {
         return count.get();
+    }
+    
+    // Removes a node from head of queue
+    private E dequeue() {
+//        E e = head.next.item;
+//        head.next = head.next.next;
+//        if (head.next == null) {
+//            tail = head;
+//        }
+        head = head.next;
+        E e = head.item;
+        head.item = null;
+        return e;
     }
     
     // Signals a waiting take. Called only from put
@@ -120,5 +140,115 @@ public class BlockingQueue<E> {
         } finally {
             putLock.unlock();
         }
+    }
+    
+    /*
+     * The returned iterator is a "weakly consistent" iterator that will never
+     * throw ConcurrentModificationException, and guarantees to traverse
+     * elements as they existed upon construction of the iterator, and may (but
+     * is not guaranteed to) reflect any modifications subsequent to
+     * construction.
+     */
+    public Iterator<E> iterator() {
+        return new Itr();
+    }
+    
+    private class Itr implements Iterator<E> {
+        private Node<E> current;
+        private Node<E> lastRet;
+        private E currentElement;
+        
+        Itr() {
+            fullyLock();
+            try {
+                current = head.next;
+                if (current != null) {
+                    currentElement = current.item;
+                }
+            } finally {
+                fullyUnlock();
+            }
+        }
+        
+        @Override
+        public boolean hasNext() {
+            return currentElement != null;
+        }
+
+        @Override
+        public E next() {
+            fullyLock();
+            try {
+                if (current == null) {
+                    throw new NoSuchElementException();
+                }
+                E e = currentElement;
+                lastRet = current;
+                current = nextNode(current);
+                currentElement = (current == null ? null : current.item);
+                return e;
+            } finally {
+                fullyUnlock();
+            }
+        }
+
+        @Override
+        public void remove() {
+            if (lastRet == null) {
+                throw new IllegalStateException();
+            }
+            fullyLock();
+            try {
+                Node<E> node = lastRet;
+                lastRet = null;
+                for (Node<E> trail = head, p =  trail.next; p != null; trail = p, p = p.next) {
+                    if (p == node) {
+                        // unlink p and trail
+                        p.item = null;
+                        trail.next = p.next;
+                        if (tail == p) {
+                            tail = trail;
+                        }
+                        if (count.getAndDecrement() == capacity) {
+                            notFull.signal();
+                        }
+                        break;
+                    }
+                }
+            } finally {
+                fullyUnlock();
+            }
+        }
+        
+        /*
+         * Returns the next live successor of current, or null if no such.
+         * Unlike other traversal methods, iterators need to handle both: -
+         * dequeued nodes (current.next == current) - (possibly multiple)
+         * interior removed nodes (current.item == null)
+         */
+        private Node<E> nextNode(Node<E> current) {
+            for (;;) {
+                Node<E> next = current.next;
+                if (next == current) {
+                    return head.next;
+                }
+                if (next == null || next.item != null) {
+                    return next;
+                }
+                current = next;
+            }
+        }
+    }
+    
+    // Lock to prevent both puts and takes
+    private void fullyLock() {
+        putLock.lock();
+        takeLock.lock();
+    }
+    
+    // Unlock to allow both puts and takes
+    private void fullyUnlock() {
+        putLock.lock();
+        takeLock.lock();
     }
 }

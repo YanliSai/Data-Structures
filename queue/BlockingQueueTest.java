@@ -29,7 +29,7 @@ public class BlockingQueueTest {
 //                    if (buffer.size() > NUM) {
 //                        System.err.println("buffer size is greater than capacity");
 //                    }
-                    Thread.sleep((int)(Math.random() * 100));
+                    Thread.sleep((int)(Math.random() * 10));
                 }
             } catch (InterruptedException ex) {
                 
@@ -43,7 +43,7 @@ public class BlockingQueueTest {
             try {
                 while (true) {
                     System.out.println("\t\t\tConsumer takes " + buffer.take());
-                    Thread.sleep((int)(Math.random() * 100));
+                    Thread.sleep((int)(Math.random() * 10));
                 }
             } catch (InterruptedException ex) {
                 
