@@ -28,9 +28,7 @@ public class Stack<E> {
     }
     
     public void push(E item) {
-        if (size == element.length) { // The array is full
-            element = Arrays.copyOf(element, 2 * size + 1); // Double the array
-        }
+        ensureCapacity();
         element[size++] = item;
     }
 
@@ -45,5 +43,13 @@ public class Stack<E> {
     
     public int size() {
         return size;
+    }
+    
+    private void ensureCapacity() {
+        if (size == element.length) { // The array is full
+            int newSize = size > (Integer.MAX_VALUE - 1) / 2 ? Integer.MAX_VALUE
+                    : 2 * size + 1;
+            element = Arrays.copyOf(element, newSize); // Double the array
+        }
     }
 }
